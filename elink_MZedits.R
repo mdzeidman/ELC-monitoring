@@ -14,7 +14,7 @@ library(leaflet)
 
 ## run functions
 #source(here::here('analyses', 'kcm_style.R'))
-source(here::here('mdzeidman', 'ELC-monitoring', 'elink_MZedits.R'))
+source(here::here('elink_MZedits.R'))
 
 
 #route_list <- c(240, 241, 246, 203, 246, 221, 222, 223, 256, 257, 311)
