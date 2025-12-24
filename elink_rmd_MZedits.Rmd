@@ -17,7 +17,8 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # github location
 #source(here::here('analyses', 'kcm_style.R'))
-source(here::here('analyses', 'south-team', 'east', 'elink.r'))
+#MZ attempted to fix source of R code 
+source(here::here('mdzeidman', 'ELC-monitoring', 'elink-MZedits.r'))
 
 
 library(kableExtra)
@@ -32,16 +33,14 @@ library(leafsync)
 
 ```
 
-##  Summary
+## Summary
 
-* Weekday stop ridership (ons + offs)
-* Examines Fall 2024, Spring 2025, and Fall 2025 data (does NOT include DART route currently):
-  * In total, there are `r length(route_list)` routes and `r length(stop_list)` stops: `r route_list`
-  * In Fall 24, there are `r count_route_243` routes and `r count_stop_243` stops: `r route_243`
-  * In Spring 25, there are `r count_route_251` routes and `r count_stop_251` stops: `r route_251`
-  * In Fall 25, there are `r count_route_253` routes and `r count_stop_253` stops: `r route_253`
-
-
+-   Weekday stop ridership (ons + offs)
+-   Examines Fall 2024, Spring 2025, and Fall 2025 data (does NOT include DART route currently):
+    -   In total, there are `r length(route_list)` routes and `r length(stop_list)` stops: `r route_list`
+    -   In Fall 24, there are `r count_route_243` routes and `r count_stop_243` stops: `r route_243`
+    -   In Spring 25, there are `r count_route_251` routes and `r count_stop_251` stops: `r route_251`
+    -   In Fall 25, there are `r count_route_253` routes and `r count_stop_253` stops: `r route_253`
 
 ## Stop Ridership
 
@@ -110,8 +109,7 @@ map_stop_253
 
 ### By Time of Day
 
-Weekday data only
-Note: dart data are not available by period
+Weekday data only Note: dart data are not available by period
 
 ```{r}
 
@@ -203,11 +201,6 @@ kbl(
 
 ```
 
-
-
-
-
-
 ## Trip Ridership
 
 Overall by day
@@ -257,7 +250,6 @@ Overall by day
 #   kable_styling(bootstrap_options = c("striped", "hover"))
 
 ```
-
 
 Weekdays
 
@@ -355,25 +347,3 @@ Sunday
 #   kable_styling(bootstrap_options = c("striped", "hover"))
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
