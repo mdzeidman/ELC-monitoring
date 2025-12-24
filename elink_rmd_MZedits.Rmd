@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # github location
 #source(here::here('analyses', 'kcm_style.R'))
 #MZ attempted to fix source of R code 
-source(here::here('ELC-monitoring', 'elink-MZedits.R'))
+source(here::here('ELC-monitoring', 'elink_MZedits.R'))
 
 
 library(kableExtra)
