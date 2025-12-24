@@ -1,0 +1,379 @@
+---
+title: "East Link Fall 2024, Spring 2025, & Ongoing Fall 2025"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  rmarkdown::html_document:
+    theme: flatly
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collaspe: false
+      smooth_scroll: true
+      fig_caption: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# github location
+#source(here::here('analyses', 'kcm_style.R'))
+source(here::here('analyses', 'south-team', 'east', 'elink.r'))
+
+
+library(kableExtra)
+library(plotly)
+library(sf) # for shapes
+library(leaflet) # for interactive maps
+library(leafsync)
+
+
+# Render Command
+# rmarkdown::render(input = here::here('analyses', 'rtw',"rtw_rmd.Rmd"), output_format = "html_document", envir = globalenv())
+
+```
+
+##  Summary
+
+* Weekday stop ridership (ons + offs)
+* Examines Fall 2024, Spring 2025, and Fall 2025 data (does NOT include DART route currently):
+  * In total, there are `r length(route_list)` routes and `r length(stop_list)` stops: `r route_list`
+  * In Fall 24, there are `r count_route_243` routes and `r count_stop_243` stops: `r route_243`
+  * In Spring 25, there are `r count_route_251` routes and `r count_stop_251` stops: `r route_251`
+  * In Fall 25, there are `r count_route_253` routes and `r count_stop_253` stops: `r route_253`
+
+
+
+## Stop Ridership
+
+### Spring 2025 - Fall 2025
+
+Note: there is no Fall 2025 dart data yet
+
+```{r}
+
+kbl(
+  summ_table(
+    source = 'stop_ridership',
+    group_var = c('Day', 'dart'),
+    #select_service_change = c(243, 251),
+    select_service_change = c(251, 253),
+    var1 = c('rider')
+  ) %>%
+    # MZ commented out to get all days of week: filter(Day == 'Weekday') %>%
+    #janitor::adorn_totals() %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+      # Change = get('Spring 2025') - get('Fall 2024'),
+      # Percent_Change = Change / get('Fall 2024')
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+    ) %>%
+    # MZ updated Percent_Change accuracy to one decimal place 0.1
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 0.1)) %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+#MZ attempt to define another color palette with 5 colors and 5 even breaks
+pal <- colorFactor("Spectral",data$colors, n=5)
+
+map_stop_change <- stop_ridership_map(
+  # before = 243,
+  # after = 251,
+  before = 251,
+  after = 253,
+  var1 = 'average daily ridership',
+  peak = 'no',
+  change = 'yes'
+  # MZ attempt to change colors
+  fillColor = ~ pal(colors())
+
+)
+
+#leafsync::sync(map_stop_change1, map_stop_change)
+
+map_stop_change
+
+map_stop_253 <- stop_ridership_map(
+  # before = 243,
+  # after = 251,
+  before = 251,
+  after = 253,
+  var1 = 'average daily ridership',
+  peak = 'no',
+  change = 'no'
+)
+map_stop_253
+
+```
+
+### By Time of Day
+
+Weekday data only
+Note: dart data are not available by period
+
+```{r}
+
+ridership_crosstab_overtime_plt(
+  source = 'stop_ridership',
+  day_of_week = 'Weekday',
+  select_service_change = service_changes,
+  x_axis = 'time_period_at_stop',
+  var1 = 'rider'
+)
+
+
+kbl(
+  summ_table(
+    source = 'stop_ridership',
+    group_var = c('Day', 'time_period_at_stop'),
+    #select_service_change = c(243, 251),
+    select_service_change = c(251, 253),
+    var1 = c('rider')
+  ) %>%
+    filter(Day == 'Weekday') %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+      # Change = get('Spring 2025') - get('Fall 2024'),
+      # Percent_Change = Change / get('Fall 2024')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    filter(!is.na(time_period_at_stop)) %>%
+    select(-Variable, -Day)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### By Route
+
+Note: stop data are summed by route, however for route level ridership comparisons, use trip level data
+
+```{r}
+
+ridership_crosstab_overtime_plt(
+  source = 'stop_ridership',
+  day_of_week = 'Weekday',
+  select_service_change = c(243, 251, 253),
+  x_axis = 'hour',
+  var1 = 'rider'
+)
+
+
+ridership_crosstab_overtime_plt(
+  source = 'stop_ridership',
+  day_of_week = 'Weekday',
+  select_service_change = c(243, 251, 253),
+  x_axis = 'route',
+  var1 = 'rider'
+)
+
+kbl(
+  summ_table(
+    source = 'stop_ridership',
+    group_var = c('Day', 'route', 'dart'),
+    #select_service_change = c(243, 251),
+    select_service_change = c(251, 253),
+    var1 = c('rider')
+  ) %>%
+    filter(Day == 'Weekday') %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+      # Change = get('Spring 2025') - get('Fall 2024'),
+      # Percent_Change = Change / get('Fall 2024')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+    mutate(
+      Percent_Change = scales::percent(Percent_Change, accuracy = 1),
+      route = as.character(route)
+    ) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable, -Day)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+
+
+
+
+## Trip Ridership
+
+Overall by day
+
+```{r}
+
+# kbl(
+#   summ_table(
+#     source = 'trip_ridership',
+#     group_var = c('Day'),
+#     select_service_change = c(243, 251),
+#     var1 = c('ons')
+#   ) %>%
+#     #filter(Day == 'Weekday') %>%
+#     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+#     mutate(
+#       Change = get('Spring 2025') - get('Fall 2024'),
+#       Percent_Change = Change / get('Fall 2024')
+#     ) %>%
+#     arrange(desc(Percent_Change)) %>%
+#     mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+#     janitor::adorn_totals() %>%
+#     mutate_if(is.numeric, scales::label_comma()) %>%
+#     select(-Variable)
+# ) %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+
+# kbl(
+#   summ_table(
+#     source = 'trip_ridership',
+#     group_var = c('Day'),
+#     select_service_change = c(251, 253),
+#     var1 = c('ons')
+#   ) %>%
+#     #filter(Day == 'Weekday') %>%
+#     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+#     mutate(
+#       Change = get('Fall 2025') - get('Spring 2025'),
+#       Percent_Change = Change / get('Spring 2025')
+#     ) %>%
+#     arrange(desc(Percent_Change)) %>%
+#     mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+#     janitor::adorn_totals() %>%
+#     mutate_if(is.numeric, scales::label_comma()) %>%
+#     select(-Variable)
+# ) %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+Weekdays
+
+```{r}
+#weekdays
+# kbl(
+#   summ_table(
+#     source = 'trip_ridership',
+#     group_var = c('Day', 'route'),
+#     select_service_change = c(243, 251),
+#     var1 = c('ons')
+#   ) %>%
+#     filter(Day == 'Weekday') %>%
+#     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+#     mutate(
+#       Change = get('Spring 2025') - get('Fall 2024'),
+#       Percent_Change = Change / get('Fall 2024')
+#     ) %>%
+#     arrange(desc(Percent_Change)) %>%
+#     mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+#     janitor::adorn_totals() %>%
+#     mutate_if(is.numeric, scales::label_comma()) %>%
+#     select(-Variable, -Day)
+# ) %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+
+# ridership_route_service_change_plt(
+#   day_of_week = 'Weekday',
+#   #day_of_week = c('Weekday', 'Saturday', 'Sunday'),
+#   select_routes = route_list,
+#   select_service_change = service_changes,
+#   var1 = 'ons'
+# )
+# #route_ridership_map()
+```
+
+weekends
+
+```{r}
+# weekend
+# ridership_route_service_change_plt(day_of_week = c('Saturday', 'Sunday'))
+# ridership_route_service_change_plt(select_service_change = c(193,251),
+#                                    day_of_week = c('Weekday', 'Saturday', 'Sunday'))
+```
+
+Saturday
+
+```{r}
+
+# kbl(
+#   summ_table(
+#     source = 'trip_ridership',
+#     group_var = c('Day', 'route'),
+#     select_service_change = c(243, 251),
+#     var1 = c('ons')
+#   ) %>%
+#     filter(Day == 'Saturday') %>%
+#     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+#     mutate(
+#       Change = get('Spring 2025') - get('Fall 2024'),
+#       Percent_Change = Change / get('Fall 2024')
+#     ) %>%
+#     arrange(desc(Percent_Change)) %>%
+#     mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+#     janitor::adorn_totals() %>%
+#     mutate_if(is.numeric, scales::label_comma()) %>%
+#     select(-Variable, -Day)
+# ) %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+Sunday
+
+```{r}
+
+# kbl(
+#   summ_table(
+#     source = 'trip_ridership',
+#     group_var = c('Day', 'route'),
+#     select_service_change = c(243, 251),
+#     var1 = c('ons')
+#   ) %>%
+#     filter(Day == 'Sunday') %>%
+#     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+#     mutate(
+#       Change = get('Spring 2025') - get('Fall 2024'),
+#       Percent_Change = Change / get('Fall 2024')
+#     ) %>%
+#     arrange(desc(Percent_Change)) %>%
+#     mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 1)) %>%
+#     janitor::adorn_totals() %>%
+#     mutate_if(is.numeric, scales::label_comma()) %>%
+#     select(-Variable, -Day)
+# ) %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
