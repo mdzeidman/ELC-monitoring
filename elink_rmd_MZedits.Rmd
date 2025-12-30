@@ -16,9 +16,9 @@ output:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # github location
-#source(here::here('analyses', 'kcm_style.R'))
+#source(here::here('kcm_style.R'))
 #MZ attempted to fix source of R code 
-source(here::here('ELC monitoring', 'ELC-monitoring', 'elink_MZedits.R'))
+source("elink_MZedits.R")
 
 
 
@@ -45,7 +45,7 @@ library(leafsync)
 
 ## Stop Ridership
 
-### Spring 2025 - Fall 2025
+### Spring 2025 - Fall 2025 
 
 Note: there is no Fall 2025 dart data yet
 
@@ -79,9 +79,9 @@ kbl(
 pal <- colorFactor("Spectral",data$colors, n=5)
 
 map_stop_change <- stop_ridership_map(
-  # before = 243,
-  # after = 251,
-  before = 251,
+ before = 243,
+ after = 251,
+ before = 251,
   after = 253,
   var1 = 'average daily ridership',
   peak = 'no',
@@ -91,13 +91,13 @@ map_stop_change <- stop_ridership_map(
 
 )
 
-#leafsync::sync(map_stop_change1, map_stop_change)
+leafsync::sync(map_stop_change1, map_stop_change)
 
 map_stop_change
 
 map_stop_253 <- stop_ridership_map(
-  # before = 243,
-  # after = 251,
+   before = 243,
+   after = 251,
   before = 251,
   after = 253,
   var1 = 'average daily ridership',

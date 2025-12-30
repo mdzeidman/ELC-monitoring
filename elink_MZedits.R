@@ -11,11 +11,13 @@ library(tidytransit)
 library(tidycensus)
 library(sf)
 library(leaflet)
+library(dplyr)
 
 ## run functions
 #source(here::here('analyses', 'kcm_style.R'))
-source(here::here('analyses', 'renton-restructure', '0_ec_functions.R'))
-
+#source(here::here('analyses', 'renton-restructure', '0_ec_functions.R'))
+#updated source location to my local drive
+source('0_ec_functions_MZedits.R')
 
 #route_list <- c(240, 241, 246, 203, 246, 221, 222, 223, 256, 257, 311)
 # MZ excluded route 8 and 111 since Seattle routes with no recent changes.
@@ -75,20 +77,20 @@ exclude_routes <- c(204, 224, 249, 630, 930, 931)
 #exclude_routes <- c(118, 119, 981)
 
 ## load dart data -------------------------------------
-dart_stop_raw <- read.csv(here::here(
-  'analyses',
-  'dart',
-  'dart_stop_243_251.csv'
-)) %>%
-  mutate(Route = as.character(Route), dart = 'DART') %>%
-  select(-Service, -avg_trip_dart, -stop_name_dart) %>%
-  filter(route %in% dart_routes)
+#dart_stop_raw <- read.csv(here::here(
+ # 'analyses',
+#  'dart',
+#  #'dart_stop_243_251.csv'
+#)) %>%
+#  mutate(Route = as.character(Route), dart = 'DART') %>%
+#  select(-Service, -avg_trip_dart, -stop_name_dart) %>%
+#  filter(route %in% dart_routes)
 
 ## elink stat
 count_all_routes <- length(route_list)
 
 ## custom colors:
-source(here::here('analyses', 'kcm_style.R'))
+source('kcm_style.R')
 
 productivity_palette <- function() {
   kcm_custom_colors <- c(
@@ -151,8 +153,8 @@ stop_ridership <- ServicePlanningFunctions::get_stop_ridership(
   tbird_connection = con
 ) %>%
   # append dart data
-  bind_rows(dart_stop_raw) %>%
-  mutate(dart = case_when(is.na(dart) ~ 'Fixed-Route', TRUE ~ dart)) %>%
+#  bind_rows(dart_stop_raw) %>%
+#  mutate(dart = case_when(is.na(dart) ~ 'Fixed-Route', TRUE ~ dart)) %>%
   # ServicePlanningFunctions::clean_service_rte_num()
   mutate(
     Route = as.character(route),
@@ -220,6 +222,16 @@ count_stop_253 <- length(stop_253)
 #   select_service_change = service_changes,
 #   var1 = c('rider', 'ons', 'offs')
 # )
+# write_csv(table_stop_ridership, "stop_ridership_2025.12.15.csv")
+
+## write csv - MZ attempted to created new csv for ridership by time period
+write_csv(stop_ridership, "stop_ridership_time_period_2025.12.30.csv")
+ table_stop_ridership <- summ_table(
+   source = 'stop_ridership',
+   group_var = c('stop_id', 'host_street_nm', 'cross_street_nm', 'route', 'Day', 'time_period_at_stop'),
+   select_service_change = service_changes,
+   var1 = c('rider', 'ons', 'offs')
+ )
 # write_csv(table_stop_ridership, "stop_ridership_2025.12.15.csv")
 
 ## create route neighborhood xwalk
@@ -373,9 +385,9 @@ shape_all_stops <- DBI::dbGetQuery(
   con,
   glue::glue_sql(
     "
-SELECT * 
-FROM (
-SELECT [STOP_ID]
+ SELECT * 
+ FROM (
+ SELECT [STOP_ID]
       ,[ON_STREET_NM]
       ,[CROSS_STREET_NM]
       ,[GPS_LATITUDE]
@@ -388,11 +400,11 @@ SELECT [STOP_ID]
       --,[IS_ACTIVE_FLAG]
       --,[TRANSIT_STOP_KEY]
 	  ,ROW_NUMBER() OVER(PARTITION BY STOP_ID ORDER BY [EFF_END_DATE] DESC) AS rn
-  FROM [EDW].[DIM_TRANSIT_STOP]) A
-  WHERE rn = 1
+   FROM [EDW].[DIM_TRANSIT_STOP]) A
+   WHERE rn = 1
   and [STOP_TYPE_SHORT_DESC] IN ('Regular', 'Reg/Lay') --'Layover'
   AND [STOP_ID] IN ({vals1*})
-  ",
+ ",
     vals1 = stop_list,
     .con = con
   )

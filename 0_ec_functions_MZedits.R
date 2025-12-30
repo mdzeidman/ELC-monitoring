@@ -1,0 +1,1304 @@
+options(scipen = 999)
+library(DBI)
+library(tidyverse)
+library(viridis)
+library(plotly)
+library(tidytransit)
+library(tidycensus)
+library(sf)
+library(leaflet)
+
+
+## summary table ---------------------------------------------------------------------
+
+# group_var = c('Service', 'Route', 'Day')
+# var1 = c('ons', 'offs', 'avg_load')
+
+summ_table <- function(
+  source,
+  group_var = c('Day'),
+  select_service_change = c(243, 251), #service_changes,
+  var1 = 'ons' #, format = 'yes'
+) {
+  if (source == 'stop_ridership') {
+    data <- stop_ridership %>%
+      filter(service_change_num %in% select_service_change) %>%
+      group_by_at(vars(service_change_num, Service, group_var)) %>%
+      summarise(across(ons:offs, sum, na.rm = TRUE)) %>%
+      mutate(rider = ons + offs) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'Variable',
+        values_to = 'value'
+      ) %>%
+      arrange(service_change_num) %>%
+      ungroup() %>%
+      select(-service_change_num)
+  }
+
+  if (source == 'trip_ridership') {
+    data <- trip_ridership %>%
+      filter(service_change_num %in% select_service_change) %>%
+      group_by_at(vars(service_change_num, Service, group_var)) %>%
+      #select('axis' = x_axis, ons:avg_load) %>%
+      summarise(
+        across(ons:offs, sum, na.rm = TRUE),
+        across(avg_load, mean, na.rm = TRUE)
+      ) %>%
+      mutate(rider = ons + offs) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'Variable',
+        values_to = 'value'
+      ) %>%
+      mutate(value = round(value)) %>%
+      arrange(service_change_num) %>%
+      ungroup() %>%
+      select(-service_change_num)
+  }
+
+  data <- data %>%
+    pivot_wider(
+      names_from = Service,
+      values_from = value
+    ) %>%
+    filter(Variable %in% var1) %>%
+    mutate(
+      Variable = case_when(
+        Variable == 'ons' ~ 'average daily ons',
+        Variable == 'offs' ~ 'average daily offs',
+        Variable == 'avg_load' ~ 'average load',
+        Variable == 'rider' ~ 'average daily ridership',
+        TRUE ~ Variable
+      )
+    )
+  #        Change = Post - Before,
+  #        Percent_Change = Change/Before) %>%
+  # arrange(desc(Percent_Change))
+
+  # if(format == 'yes'){
+  #
+  #   data <- data %>%
+  #     arrange(Day, Route) %>%
+  #     mutate(Baseline = format(round(Baseline), big.mark = ','),
+  #            Before = format(round(Before), big.mark = ','),
+  #            Post = format(round(Post), big.mark = ','),
+  #            Change = format(round(Change), big.mark = ','),
+  #            Percent_Change = scales::percent(Percent_Change, accuracy = 1))
+  #
+  # }
+
+  data
+}
+
+# a <- trip_ridership %>%
+#   filter(service_change_num %in% c(193, 251)) %>%
+#   group_by(service_change_num, Day) %>%
+#   summarise(ons = sum(ons, na.rm = TRUE))
+
+# aa <- stop_ridership %>%
+#   filter(service_change_num %in% c(193, 251)) %>%
+#   group_by(service_change_num, Day) %>%
+#   summarise(ons = sum(ons, na.rm = TRUE))
+
+# a <- summ_table(source = 'trip_ridership', group_var = c('Day', 'Route'))
+# aa <- summ_table(source = 'stop_ridership', group_var = c('Service', 'Day', 'Route', 'stop_id'))
+
+## route ridership plts ---------------------------------------------------------------------
+
+## route by service change - select day
+
+ridership_route_service_change_plt <- function(
+  day_of_week = 'Weekday',
+  #day_of_week = c('Weekday', 'Saturday', 'Sunday'),
+  select_routes = route_list,
+  #time_period = c("AM",  "PM", "MID", "XEV", "XNT"),
+  #select_area = select_neighborhood,
+  select_service_change = service_changes,
+  var1 = 'ons'
+) {
+  data <- trip_ridership %>%
+    group_by(service_change_num, Service, Route, route, Day) %>%
+    summarise(
+      across(ons:offs, sum, na.rm = TRUE),
+      across(avg_load, mean, na.rm = TRUE)
+    ) %>%
+    pivot_longer(
+      cols = ons:avg_load,
+      names_to = 'variable',
+      values_to = 'value'
+    ) %>%
+    mutate(value = round(value, digits = 1)) %>%
+    filter(
+      variable == var1,
+      Day %in% day_of_week,
+      #day_part_cd %in% time_period,
+      service_change_num %in% select_service_change,
+      route %in% select_routes
+    )
+
+  sub_title <- ''
+
+  # period_title <- ifelse(length(unique(unlist(list(unique(data$day_part_cd))))) > 4, paste0('All Day'),
+  #                        paste0(unique(unlist(list(unique(data$day_part_cd)))), collapse = ", "))
+
+  if (length(select_routes) > 15) {
+    # top 15 routes in latest service change
+    data1 <- data %>%
+      group_by(service_change_num, Service, Route, route) %>%
+      summarise(value = sum(value, na.rm = TRUE)) %>%
+      arrange(desc(service_change_num), desc(value)) %>%
+      head(15)
+
+    subset_route_list <- unlist(list(unique(data1$route)))
+
+    data <- data %>%
+      group_by(service_change_num, Service, Route, route, Day) %>%
+      summarise(value = sum(value, na.rm = TRUE)) %>%
+      filter(route %in% subset_route_list)
+
+    sub_title <- ', Top 15'
+  }
+
+  var_title <- case_when(
+    var1 == 'ons' ~ 'Average Daily Boardings',
+    var1 == 'offs' ~ 'Average Daily Alightings',
+    var1 == 'avg_load' ~ 'Average Max Load'
+  )
+  # day_title <- unique(case_when(day_of_week == c('Weekday', 'Saturday', 'Sunday') ~ 'All Week',
+  #                        TRUE ~ day_of_week))
+
+  plt <- ggplot(
+    data,
+    aes(x = reorder(Route, desc(value)), y = value, fill = Service)
+  ) +
+    geom_col(position = position_dodge()) +
+    # geom_label(aes(label = format(round(value, digits = 0), big.mark = ','),
+    #                group = factor(Service)),
+    #            fill = 'white',
+    #            color = 'black',
+    #            position = position_dodge(.9),
+    #            vjust = 1) +
+    ggtitle(paste0(var_title, ' by Route', sub_title)) +
+    labs(y = "", x = "") +
+    scale_x_discrete(
+      labels = scales::label_wrap(10),
+      guide = guide_axis(angle = 45)
+    ) +
+    facet_wrap(~Day) +
+    kcm_style() +
+    #kcm_color_palette()
+    ridership_palette()
+  plt
+}
+
+# ridership_route_service_change_plt(select_routes =get_routes_by_neighborhood(select_neighborhood = c('Denny Triangle')))
+# ridership_route_service_change_plt(select_routes = c(111, 673, 255))
+# ridership_route_service_change_plt(time_period = c("AM", "PM"))
+# ridership_route_service_change_plt(time_period = c("AM"))
+# ridership_route_service_change_plt(time_period = c("XEV"))
+# ridership_route_service_change_plt()
+
+# group trip OR stop riderhip by hour, period, or neighborhood --------------------
+
+ridership_crosstab_overtime_plt <- function(
+  source, #group_var,
+  day_of_week = 'Weekday',
+  select_routes = route_list,
+  #exclude = exclude_routes,
+  select_service_change = service_changes,
+  x_axis,
+  var1 = 'ons'
+) {
+  if (source == 'stop_ridership') {
+    data <- stop_ridership %>%
+      filter(
+        Day %in% day_of_week,
+        route %in% select_routes
+        #!Route %in% exclude_routes
+      ) %>%
+      group_by_at(vars(service_change_num, Service, x_axis)) %>%
+      select('axis' = x_axis, ons, offs) %>%
+      summarise(across(ons:offs, sum, na.rm = TRUE)) %>%
+      mutate(rider = ons + offs) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'variable',
+        values_to = 'value'
+      ) %>%
+      filter(
+        variable %in% var1,
+        service_change_num %in% select_service_change
+      ) %>%
+      mutate(
+        variable = case_when(
+          variable == 'ons' ~ 'Average Daily Stop Boardings',
+          variable == 'offs' ~ 'Average Daily Stop Alightings',
+          variable == 'rider' ~ 'Average Daily Stop Ridership',
+          TRUE ~ variable
+        )
+      )
+
+    source_title <- 'Stop Ridership'
+  }
+
+  if (source == 'trip_ridership') {
+    data1 <- trip_ridership
+
+    if (x_axis == 'neighborhood') {
+      data1 <- trip_ridership %>%
+        left_join(xwalk_route_neighborhood, by = join_by(route))
+    }
+
+    data <- data1 %>%
+      filter(
+        Day %in% day_of_week,
+        route %in% select_routes
+        #!Route %in% exclude_routes
+      ) %>%
+      #left_join(xwalk_route_neighborhood, by = join_by(route)) %>%
+      group_by_at(vars(service_change_num, Service, x_axis)) %>%
+      #slice(1) %>%
+      select('axis' = x_axis, ons:avg_load) %>%
+      summarise(
+        across(ons:offs, sum, na.rm = TRUE),
+        across(avg_load, mean, na.rm = TRUE)
+      ) %>%
+      mutate(rider = ons + offs) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'variable',
+        values_to = 'value'
+      ) %>%
+      filter(
+        variable %in% var1,
+        service_change_num %in% select_service_change
+      ) %>%
+      mutate(
+        variable = case_when(
+          variable == 'ons' ~ 'Average Daily Boardings',
+          variable == 'offs' ~ 'Average Daily Alightings',
+          variable == 'rider' ~ 'Average Daily Ridership',
+          variable == 'avg_load' ~ 'Average Max Load',
+          TRUE ~ variable
+        )
+      )
+
+    source_title <- 'Trip Ridership'
+  }
+
+  var_title <- case_when(
+    var1 == 'ons' ~ 'Average Daily Boardings',
+    var1 == 'offs' ~ 'Average Daily Alightings',
+    var1 == 'rider' ~ 'Average Daily Ridership',
+    var1 == 'avg_load' ~ 'Average Max Load'
+  )
+
+  axis_title <- case_when(
+    x_axis == 'neighborhood' ~ 'Neighborhood',
+    x_axis == 'period' ~ 'Period',
+    x_axis == 'hour' ~ 'Hour',
+    x_axis == 'route' ~ 'Route',
+    x_axis == 'stop' ~ 'Stop'
+  )
+
+  plt <- ggplot(
+    data,
+    aes(
+      x = reorder(axis, desc(value)),
+      y = value,
+      fill = reorder(Service, service_change_num)
+    )
+    #aes(x = reorder(axis, desc(value)), y = value, fill = Service)
+  )
+
+  if (x_axis == 'period') {
+    data <- data %>%
+      mutate(
+        period = factor(
+          axis,
+          levels = c("AM Peak", "Midday", "PM Peak", 'Evening', 'Night')
+        )
+      )
+
+    plt <- ggplot(
+      data,
+      aes(x = period, y = value, fill = reorder(Service, service_change_num))
+    )
+  }
+  if (x_axis == 'hour') {
+    data <- data %>%
+      mutate(hour_label = as.character(axis))
+
+    plt <- ggplot(
+      data,
+      aes(
+        x = reorder(hour_label, axis),
+        y = value,
+        fill = reorder(Service, service_change_num)
+      )
+    )
+  }
+
+  plt <- plt +
+    geom_col(position = position_dodge()) +
+    scale_fill_viridis(discrete = TRUE, name = 'Legend') +
+    ggtitle(paste0(
+      'Weekday ',
+      var_title,
+      ' by ',
+      axis_title,
+      ', ',
+      source_title
+    )) +
+    labs(y = "", x = "") +
+    scale_x_discrete(
+      labels = scales::label_wrap(10),
+      guide = guide_axis(angle = 45)
+    ) +
+    #facet_wrap(~variable, labeller = labeller(variable = c("avg_daily_ons" = "Departures", "avg_daily_offs" = "Arrivals"))) +
+    kcm_style() +
+    kcm_color_palette() +
+    ridership_palette()
+  plt
+}
+
+
+# ridership_crosstab_overtime_plt(source = 'stop_ridership',
+#                                 x_axis = 'neighborhood',
+#                                 var1 = 'rider')
+# ridership_crosstab_overtime_plt(source = 'stop_ridership',
+#                                 x_axis = 'period',
+#                                 var1 = 'rider')
+# ridership_crosstab_overtime_plt(source = 'stop_ridership',
+#                                 x_axis = 'hour',
+#                                 select_service_change = c(193, 243, 251),
+#                                 var1 = 'rider')
+# ridership_crosstab_overtime_plt(source = 'trip_ridership',
+#                                 x_axis = 'hour',
+#                                 select_service_change = c(193, 243, 251),
+#                                 var1 = 'ons')
+
+#
+# ridership_crosstab_overtime_plt(source = 'trip_ridership',
+#                                 x_axis = 'period',
+#                                 var1 = 'ons')
+# ridership_crosstab_overtime_plt(source = 'trip_ridership',
+#                                 x_axis = 'neighborhood',
+#                                 var1 = 'ons')
+
+hour_by_var_plt <- function(
+  source,
+  select_service_change = service_changes,
+  var1 = 'rider',
+  selection,
+  subset
+) {
+  if (source == 'stop_ridership') {
+    data <- stop_ridership %>%
+      select(
+        service_change_num,
+        Service,
+        hour,
+        'var' = selection,
+        ons,
+        offs
+      ) %>%
+      group_by(service_change_num, Service, hour, var) %>%
+      summarise(across(ons:offs, sum, na.rm = TRUE)) %>%
+      mutate(rider = ons + offs, hour_label = as.character(hour)) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'variable',
+        values_to = 'value'
+      ) %>%
+      filter(
+        var == subset,
+        variable == var1,
+        service_change_num %in% select_service_change
+      )
+
+    source_title <- 'Stop'
+  }
+
+  if (source == 'trip_ridership') {
+    data <- trip_ridership %>%
+      select(
+        service_change_num,
+        Service,
+        hour,
+        'var' = selection,
+        ons,
+        offs,
+        avg_load
+      ) %>%
+      group_by(service_change_num, Service, hour, var) %>%
+      summarise(
+        across(ons:offs, sum, na.rm = TRUE),
+        across(avg_load, mean, na.rm = TRUE)
+      ) %>%
+      mutate(rider = ons + offs, hour_label = as.character(hour)) %>%
+      pivot_longer(
+        cols = ons:rider,
+        names_to = 'variable',
+        values_to = 'value'
+      ) %>%
+      filter(
+        var == subset,
+        variable == var1,
+        service_change_num %in% select_service_change
+      )
+
+    source_title <- 'Trip'
+  }
+
+  var_title <- case_when(
+    selection == 'neighborhood' ~ paste0('in ', subset),
+    selection == 'route' ~ paste0('for Route ', subset),
+    selection == 'stop_nm' ~ paste0('for Stop ', subset)
+  )
+
+  plt <- ggplot(
+    data,
+    aes(x = reorder(hour_label, hour), y = value, fill = Service)
+  ) +
+    geom_col(position = position_dodge()) +
+    scale_fill_viridis(discrete = TRUE, name = 'Legend') +
+    ggtitle(paste0(
+      'Average Weekday ',
+      source_title,
+      ' Ridership by Hour ',
+      var_title
+    )) +
+    labs(y = "", x = "") +
+    # scale_x_discrete(labels = scales::label_wrap(10),
+    #                  guide = guide_axis(angle = 45)) +
+    #facet_wrap(~variable, labeller = labeller(variable = c("avg_daily_ons" = "Departures", "avg_daily_offs" = "Arrivals"))) +
+    kcm_style() +
+    kcm_color_palette() +
+    ridership_palette()
+  plt
+}
+
+# hour_by_var_plt(source = 'stop_ridership',
+#                 select_service_change = c(193, 243, 251),
+#                 selection = 'route',
+#                 subset = '674')
+# hour_by_var_plt(source = 'stop_ridership',
+#                 select_service_change = c(193, 243, 251),
+#                 selection = 'neighborhood',
+#                 subset = 'South Lake Union')
+# hour_by_var_plt(source = 'stop_ridership',
+#                 select_service_change = c(193, 243, 251),
+#                 selection = 'neighborhood',
+#                 subset = 'Central Business District')
+# hour_by_var_plt(source = 'stop_ridership',
+#                 select_service_change = c(193, 243, 251),
+#                 selection = 'neighborhood',
+#                 subset = 'Downtown Bellevue')
+
+## all days trip ridership by direction for a single route --------------------------------------------
+
+ridership_trip_plt <- function(
+  select_route,
+  day_of_week = c('Weekday', 'Saturday', 'Sunday'),
+  select_service_change = 251,
+  var1 = 'ons'
+) {
+  data <- trip_ridership %>%
+    filter(
+      service_change_num == select_service_change,
+      route == select_route
+    ) %>%
+    select(
+      Route,
+      Day,
+      direction,
+      trip_time,
+      sched_start_time,
+      ons,
+      offs,
+      avg_load
+    ) %>%
+    mutate(
+      direction = case_when(direction == 'I' ~ 'Inbound', TRUE ~ 'Outbound')
+    ) %>%
+    # group_by(Route, Day, direction, trip_time, sched_start_time) %>%
+    # summarise(across(ons:offs, sum, na.rm = TRUE),
+    #           across(avg_load, mean, na.rm = TRUE)) %>%
+    pivot_longer(
+      cols = ons:avg_load,
+      names_to = 'variable',
+      values_to = 'value'
+    ) %>%
+    mutate(value = round(value, digits = 1)) %>%
+    filter(variable == var1, Day %in% day_of_week)
+
+  var_title <- case_when(
+    var1 == 'ons' ~ 'Average Daily Boardings',
+    var1 == 'offs' ~ 'Average Daily Alightings',
+    var1 == 'avg_load' ~ 'Average Max Load'
+  )
+  day_title <- unique(case_when(
+    day_of_week == c('Weekday', 'Saturday', 'Sunday') ~ 'All Week',
+    TRUE ~ day_of_week
+  ))
+  route_title <- case_when(
+    select_route == 671 ~ 'A Line',
+    select_route == 672 ~ 'B Line',
+    select_route == 673 ~ 'C Line',
+    select_route == 674 ~ 'D Line',
+    select_route == 675 ~ 'E Line',
+    select_route == 676 ~ 'F Line',
+    select_route == 677 ~ 'G Line',
+    TRUE ~ paste0('Route ', select_route)
+  )
+
+  plt <- ggplot(
+    data,
+    aes(x = trip_time, y = value, color = direction, group = direction)
+  ) +
+    geom_line(linewidth = 1.4) +
+    geom_point() +
+    #scale_color_viridis(discrete = TRUE) +
+    scale_x_continuous(
+      #breaks = c(600, 1000, 1400, 1800, 2200),
+      breaks = c(360, 600, 840, 1080, 1320),
+      labels = c('6am', '10am', '2pm', '6pm', '10pm')
+    ) +
+    ggtitle(paste0(
+      route_title,
+      ' ',
+      day_title,
+      ' ',
+      var_title,
+      ', ',
+      select_service_change,
+      ' Service Change'
+    )) +
+    labs(y = "", x = "Trip Time") +
+    facet_wrap(~Day) +
+    kcm_style() +
+    kcm_color_palette()
+  plt
+}
+
+
+## route by hour by day?
+
+## route productivity plts ---------------------------------------------------------------------
+
+# by day
+
+productivity_period_plt <- function(select_route, x_axis = 'period') {
+  if (x_axis == 'Day') {
+    data <- productivity %>%
+      filter(
+        productivity_period %in% c('Day', 'Saturday', 'Sunday'),
+        service_rte_num == select_route
+      ) %>%
+      mutate(
+        productivity_period = case_when(
+          productivity_period == 'Day' ~ 'Weekday',
+          TRUE ~ productivity_period
+        ),
+        productivity_period = factor(
+          productivity_period,
+          levels = c("Weekday", "Saturday", "Sunday")
+        )
+      )
+  }
+  if (x_axis != 'Day') {
+    data <- productivity %>%
+      filter(productivity_period != 'Day', service_rte_num == select_route) %>%
+      mutate(
+        productivity_period = factor(
+          productivity_period,
+          levels = c("Peak", "Off-Peak", "Night", "Saturday", "Sunday")
+        )
+      )
+  }
+
+  route_title <- case_when(
+    select_route == 671 ~ 'A Line',
+    select_route == 672 ~ 'B Line',
+    select_route == 673 ~ 'C Line',
+    select_route == 674 ~ 'D Line',
+    select_route == 675 ~ 'E Line',
+    select_route == 676 ~ 'F Line',
+    select_route == 677 ~ 'G Line',
+    TRUE ~ paste0('Route ', select_route)
+  )
+
+  plt <- ggplot(
+    data,
+    aes(
+      x = productivity_period,
+      y = rides_per_platform_hour,
+      fill = Service,
+      group = Service
+    )
+  ) +
+    geom_col(position = position_dodge()) +
+    scale_fill_viridis(discrete = TRUE, name = 'Legend') +
+    geom_label(
+      aes(
+        label = format(
+          round(rides_per_platform_hour, digits = 0),
+          big.mark = ','
+        )
+      ),
+      fill = 'white',
+      color = 'black',
+      position = position_dodge(.9),
+      vjust = 1
+    ) +
+    ggtitle(paste0(route_title, ' Rides per Platform Hour by Day')) +
+    labs(y = "", x = "") +
+    scale_x_discrete(
+      labels = scales::label_wrap(10),
+      guide = guide_axis(angle = 45)
+    ) +
+    #facet_wrap(~Day) +
+    kcm_style() +
+    productivity_palette()
+  plt
+}
+
+#productivity_period_plt()
+
+## productivity route comparison plt
+
+productivity_route_compare_plt <- function(
+  day_of_week = 'Weekday',
+  #day_of_week = c(Saturday', 'Sunday'),
+  select_routes = route_list,
+  select_service_change = c(193, 243)
+  #var1 = 'ons'
+) {
+  # data <- productivity %>%
+  #   filter(productivity_period %in% c('Day', 'Saturday', 'Sunday')) %>%
+  #   select(service_change_num, Service, Route, Day, productivity_period, top_rides, bottom_rides, rides_per_platform_hour) %>%
+  #   mutate(productivity_period = case_when(productivity_period == 'Day' ~ 'Weekday', TRUE ~ productivity_period),
+  #          productivity_period = factor(productivity_period, levels = c("Weekday", "Saturday", "Sunday")))
+
+  if (day_of_week == 'Weekday') {
+    data <- productivity %>%
+      filter(
+        productivity_period != 'Day',
+        productivity_period != 'Saturday',
+        productivity_period != 'Sunday',
+        !Route %in% exclude_routes,
+        service_change_num %in% select_service_change
+      ) %>%
+      mutate(
+        productivity_period = factor(
+          productivity_period,
+          levels = c("Peak", "Off-Peak", "Night", "Saturday", "Sunday")
+        )
+      )
+  }
+
+  if (day_of_week != 'Weekday') {
+    data <- productivity %>%
+      filter(
+        productivity_period %in% c('Day', 'Saturday', 'Sunday'),
+        !Route %in% exclude_routes,
+        service_change_num %in% select_service_change
+      ) %>%
+      mutate(
+        productivity_period = case_when(
+          productivity_period == 'Day' ~ 'Weekday',
+          TRUE ~ productivity_period
+        ),
+        productivity_period = factor(
+          productivity_period,
+          levels = c("Weekday", "Saturday", "Sunday")
+        )
+      )
+  }
+
+  sub_title <- ''
+
+  if (length(select_routes) > 10) {
+    # top 15 routes in latest service change
+    data1 <- data %>%
+      arrange(desc(service_change_num), desc(rides_per_platform_hour)) %>%
+      head(15)
+
+    subset_route_list <- unlist(list(unique(data1$service_rte_num)))
+
+    data <- data %>%
+      filter(service_rte_num %in% subset_route_list)
+
+    sub_title <- ', Top 10'
+  }
+
+  plt <- ggplot(
+    data,
+    aes(
+      x = reorder(Route, desc(rides_per_platform_hour)),
+      y = rides_per_platform_hour,
+      fill = Service,
+      group = Service
+    )
+  ) +
+    geom_col(position = position_dodge()) +
+    scale_fill_viridis(discrete = TRUE, name = 'Legend') +
+    geom_label(
+      aes(
+        label = format(
+          round(rides_per_platform_hour, digits = 0),
+          big.mark = ','
+        )
+      ),
+      fill = 'white',
+      color = 'black',
+      position = position_dodge(.9),
+      vjust = 1
+    ) +
+    ggtitle(paste0(' Rides per Platform Hour', sub_title)) +
+    labs(y = "", x = "") +
+    scale_x_discrete(
+      labels = scales::label_wrap(10),
+      guide = guide_axis(angle = 45)
+    ) +
+    facet_wrap(~productivity_period) +
+    kcm_style() +
+    productivity_palette()
+  plt
+}
+
+#productivity_route_compare_plt()
+
+## stop ridership plts ---------------------------------------------------------------------
+## Stop ridership map ------------------------------------------------------------
+## highest stop ridership with routes served
+
+stop_ridership_map <- function(
+  before = 243,
+  after = 251,
+  var1 = 'average daily ridership',
+  peak = 'no',
+  change = 'no'
+) {
+  before_stops_routes <- stop_ridership %>%
+    filter(service_change_num == before) %>%
+    group_by(stop_id) %>%
+    summarise(BeforeRoutes = paste0(unique(route), collapse = ", "))
+
+  post_stops_routes <- stop_ridership %>%
+    filter(service_change_num == after) %>%
+    group_by(stop_id) %>%
+    summarise(CurrentRoutes = paste0(unique(route), collapse = ", "))
+
+  all_stops_routes <- post_stops_routes %>%
+    full_join(before_stops_routes) %>%
+    mutate(
+      stop_cat = case_when(
+        is.na(CurrentRoutes) ~ 'Deleted',
+        is.na(BeforeRoutes) ~ 'New',
+        TRUE ~ 'No Change'
+      ),
+      Routes = coalesce(CurrentRoutes, BeforeRoutes)
+    )
+  # ons = sum(ons),
+  # offs = sum(offs))
+
+  if (peak == 'no') {
+    period_title <- 'Weekday'
+
+    data2 <- stop_ridership %>%
+      mutate(period = 'Weekday')
+  }
+
+  if (peak == 'yes') {
+    period_title <- 'Peak'
+
+    data2 <- stop_ridership %>%
+      filter(period %in% c('AM Peak', 'PM Peak')) %>%
+      mutate(period = 'Peak')
+  }
+
+  data2 <- data2 %>%
+    filter(service_change_num %in% c(after, before)) %>%
+    mutate(
+      time_period = case_when(
+        service_change_num == after ~ 'Post',
+        service_change_num == before ~ 'Before'
+      )
+    ) %>%
+    left_join(all_stops_routes, by = join_by(stop_id)) %>%
+    group_by(time_period, stop_id, Routes, stop_cat) %>%
+    summarise(across(ons:offs, sum, na.rm = TRUE)) %>%
+    mutate(rider = ons + offs) %>%
+    pivot_longer(
+      cols = ons:rider,
+      names_to = 'Variable',
+      values_to = 'value'
+    ) %>%
+    pivot_wider(names_from = time_period, values_from = value) %>%
+    mutate(
+      Variable = case_when(
+        Variable == 'ons' ~ 'average daily ons',
+        Variable == 'offs' ~ 'average daily offs',
+        Variable == 'rider' ~ 'average daily ridership',
+        TRUE ~ Variable
+      ),
+      # change NA to 0
+      #Before = replace_na(Before, 0),
+      #Post = replace_na(Post, 0),
+      Change = Post - Before,
+      Percent_Change = Change / Before
+    ) %>%
+    filter(Variable == var1) %>%
+    arrange(desc(Percent_Change))
+
+  # get stop geography generalized to the stop name
+  data1 <- shape_stops %>%
+    # group_by(stop_name) %>%
+    # slice(1) %>%
+    inner_join(data2, by = join_by(stop_id))
+
+  # stop map
+  data <- data1 %>%
+    mutate(
+      before_label = format(round(Before, digits = 0), big.mark = ','),
+      post_label = format(round(Post, digits = 0), big.mark = ','),
+      dif_label = format(round(Change, digits = 0), big.mark = ',')
+    ) %>%
+    st_transform(4326)
+
+  if (change == 'no') {
+    data <- data %>%
+      mutate(colors = round(Post))
+
+    title <- paste0(after, " Stop Ridership")
+
+    pal <- colorQuantile("YlGnBu", data$colors, n = 3)
+
+    # pal_colors <- unique(pal(sort(data$colors))) # hex codes
+    # pal_labs <- quantile(data$colors, seq(0, 1, .2)) # depends on n from pal
+    # pal_labs <- paste(lag(pal_labs), pal_labs, sep = " - ")[-1] # first lag is NA
+  }
+
+  if (change == 'yes') {
+    data <- data %>%
+      mutate(
+        colors = round(Change),
+        #colors = case_when(is.na(colors) ~ 0, TRUE ~ colors)
+      )
+
+    title <- paste0("Change in Stop Ridership", ", ", before, "-", after)
+
+    pal <- colorQuantile("Spectral", data$colors, n = 3)
+    # bins <- c(-1000000, -50, -10, 10, 50, 1000000)
+    # pal <- colorBin('Spectral', bins = bins, na.color = "#919291ff")
+
+    # pal_colors <- unique(pal(sort(data$colors))) # hex codes
+    # pal_labs <- quantile(data$colors, seq(0, 1, .2)) # depends on n from pal
+    # pal_labs <- paste(lag(pal_labs), pal_labs, sep = " - ")[-1] # first lag is NA
+  }
+
+  #pal_colors <- pal(sort(data$colors)) # hex codes
+  pal_colors <- unique(pal(sort(data$colors))) # hex codes
+  pal_labs <- quantile(data$colors, seq(0, 1, .33), na.rm = TRUE) # depends on n from pal, .2 is increments of .2 between 0 and 1
+  pal_labs <- paste(lag(pal_labs), pal_labs, sep = " - ")[-1] # first lag is NA
+
+  map <- leaflet(data) %>%
+    addProviderTiles(provider = "CartoDB.Positron") %>%
+    addCircleMarkers(
+      fillColor = ~ pal(colors),
+      stroke = FALSE,
+      fillOpacity = 0.7,
+      popup = paste(
+        data$stop_cat,
+        "<br>",
+        data$stop_name,
+        "<br>",
+        "Stop ID:",
+        data$stop_id,
+        "<br>",
+        #"Period:", data$period, "<br>",
+        data$Variable,
+        "<br>",
+        "Avg Stop Ridership Change:",
+        data$dif_label,
+        "<br>",
+        "Avg Stop Ridership Before:",
+        data$before_label,
+        "<br>",
+        "Avg Stop Ridership After:",
+        data$post_label,
+        "<br>",
+        "Routes:",
+        data$Routes,
+        "<br>"
+      )
+    ) %>%
+    addLegend(
+      "bottomright",
+      #pal=pal,
+      values = ~colors,
+      colors = pal_colors,
+      labels = pal_labs,
+      title = paste0(title, ", ", period_title),
+      opacity = 1
+    )
+  map
+}
+
+
+### Route ridership line map
+
+route_ridership_map <- function(
+  day_of_week = 'Weekday',
+  select_service_change = 251,
+  select_route = route_list,
+  var1 = 'ons'
+) {
+  data1 <- trip_ridership %>%
+    filter(
+      service_change_num == select_service_change,
+      route %in% route_list
+    ) %>%
+    group_by(service_change_num, Service, Route, Day) %>%
+    summarise(
+      across(ons:offs, sum, na.rm = TRUE),
+      across(avg_load, mean, na.rm = TRUE)
+    ) %>%
+    pivot_longer(
+      cols = ons:avg_load,
+      names_to = 'variable',
+      values_to = 'value'
+    ) %>%
+    mutate(value = round(value, digits = 1)) %>%
+    filter(variable == var1, Day %in% day_of_week)
+
+  data <- shape_routes %>%
+    inner_join(data1, by = join_by(route_short_name == Route)) %>%
+    mutate(label = format(round(value, digits = 1), big.mark = ',')) %>%
+    st_transform(4326)
+
+  var_title <- case_when(
+    var1 == 'ons' ~ 'Average Daily Boardings',
+    var1 == 'offs' ~ 'Average Daily Alightings',
+    var1 == 'avg_load' ~ 'Average Max Load'
+  )
+
+  ## Route ridership ----------------------------------------------
+
+  pal <- colorQuantile("YlGnBu", data$value, n = 5)
+
+  pal_colors <- unique(pal(sort(data$value))) # hex codes
+  pal_labs <- quantile(data$value, seq(0, 1, .2)) # depends on n from pal
+  pal_labs <- format(round(pal_labs, digits = 1), big.mark = ",") # round power
+  pal_labs <- paste(lag(pal_labs), pal_labs, sep = " - ")[-1] # first lag is NA
+
+  map <- leaflet(data) %>%
+    addProviderTiles(provider = "CartoDB.Positron") %>%
+    addPolylines(
+      fillColor = ~ pal(value),
+      color = ~ pal(value),
+      stroke = TRUE,
+      fillOpacity = 0.7,
+      popup = paste(
+        "Route:",
+        data$route_short_name,
+        "<br>",
+        "Average Daily Ons:",
+        data$label,
+        "<br>"
+      )
+    ) %>%
+    addLegend(
+      "bottomright",
+      #pal=pal,
+      values = ~value,
+      colors = pal_colors,
+      labels = pal_labs,
+      title = paste0(day_of_week, " Route Ridership, ", select_service_change),
+      opacity = 1
+    )
+  map
+}
+
+
+## specialized: where is subarea ridership coming from? -----------------------------------------
+
+#select_subarea <- dt_renton_stops
+
+subset_stop_route_map <- function(
+  day_of_week = 'Weekday',
+  select_service_change = 251,
+  #select_route = route_list,
+  select_stops = stop_list,
+  var1 = 'rider'
+) {
+  data1 <- stop_ridership %>%
+    filter(
+      service_change_num == select_service_change,
+      Day == day_of_week,
+      stop_id %in% select_stops
+    ) %>%
+    group_by(Service, Day, Route) %>%
+    summarise(across(ons:offs, sum, na.rm = TRUE)) %>%
+    mutate(rider = ons + offs)
+
+  data <- shape_routes %>%
+    inner_join(data1, by = join_by(route_short_name == Route)) %>%
+    mutate(
+      rider_label = format(round(rider, digits = 1), big.mark = ','),
+      ons_label = format(round(ons, digits = 1), big.mark = ','),
+      offs_label = format(round(offs, digits = 1), big.mark = ',')
+    ) %>%
+    st_transform(4326)
+
+  var_title <- case_when(
+    var1 == 'ons' ~ 'Average Daily Boardings',
+    var1 == 'offs' ~ 'Average Daily Alightings',
+    var1 == 'avg_load' ~ 'Average Max Load'
+  )
+
+  ## Route ridership ----------------------------------------------
+
+  pal <- colorQuantile("YlGnBu", data$rider, n = 5)
+
+  pal_colors <- unique(pal(sort(data$rider))) # hex codes
+  pal_labs <- quantile(data$rider, seq(0, 1, .2)) # depends on n from pal
+  pal_labs <- format(round(pal_labs, digits = 1), big.mark = ",") # round power
+  pal_labs <- paste(lag(pal_labs), pal_labs, sep = " - ")[-1] # first lag is NA
+
+  map <- leaflet(data) %>%
+    addProviderTiles(provider = "CartoDB.Positron") %>%
+    addPolylines(
+      fillColor = ~ pal(rider),
+      color = ~ pal(rider),
+      stroke = TRUE,
+      fillOpacity = 0.7,
+      popup = paste(
+        "Route:",
+        data$route_short_name,
+        "<br>",
+        "Average Daily Ridership:",
+        data$rider_label,
+        "<br>",
+        "Average Daily Ons:",
+        data$ons_label,
+        "<br>",
+        "Average Daily Offs:",
+        data$offs_label,
+        "<br>"
+      )
+    ) %>%
+    addLegend(
+      "bottomright",
+      #pal=pal,
+      values = ~rider,
+      colors = pal_colors,
+      labels = pal_labs,
+      title = paste0(
+        day_of_week,
+        " Subarea Stop Ridership, ",
+        select_service_change
+      ),
+      opacity = 1
+    )
+  map
+}
+
+# select_stops <- get_stops_by_neighborhood(select_neighborhood = c('Central Business District'),
+#                                          latest_service_change = 'yes')
+
+## get stop and route geography --------------------------------------------------
+
+gtfs <- read_gtfs("https://metro.kingcounty.gov/GTFS/google_transit.zip")
+#summary(gtfs)
+
+gtfs <- gtfs_as_sf(gtfs)
+
+# get geography
+# shape_stops <- gtfs$stops %>%
+#   mutate(stop_id = as.integer(stop_id)) %>%
+#   filter(!is.na(stop_id)) %>%
+#   # inner_join(stop_list, by=join_by(stop_id)) %>%
+#   select(stop_id, stop_name)
+
+# get route geography from gtfs
+#shape_routes <- gtfs$shapes %>%
+#  left_join(gtfs$trips, by = join_by(shape_id)) %>%
+#  left_join(gtfs$routes, by = join_by(route_id)) %>%
+#  group_by(route_short_name, geometry) %>%
+#  summarise(trip_count = n()) %>%
+#  arrange(desc(trip_count)) %>%
+#  slice(1) %>%
+#  mutate(
+#    route = case_when(
+#      route_short_name == 'A Line' ~ '671',
+#      route_short_name == 'B Line' ~ '672',
+#      route_short_name == 'C Line' ~ '673',
+#      route_short_name == 'D Line' ~ '674',
+#      route_short_name == 'E Line' ~ '675',
+#      route_short_name == 'F Line' ~ '676',
+#      route_short_name == 'G Line' ~ '677',
+#      route_short_name == 'H Line' ~ '678',
+#      TRUE ~ route_short_name
+ #   )
+#  ) %>%
+#  mutate(route = as.numeric(route)) %>%
+#  filter(!is.na(route))
+# filter(route %in% route_list)
+
+## get scope stops and routes from a block group or Seattle neighborhood -----------------------------------------------
+
+# load geographic data
+## TODO: loading data should be in specific script not here, just doing this here for testing
+
+# read Seattle neighborhood geographies:
+#shape_seattle_neighborhood <- st_read(here::here(
+#  'Neighborhood_Map_Atlas_Neighborhoods.shp'
+#)) %>%
+#  st_transform(4326) %>%
+#  rename('neighborhood' = S_HOOD)
+# read EPA block group geography:
+#shape_epas <- st_read(here::here(
+ # "analyses",
+  #"rtw",
+  #'input',
+  #'epa_25_23.shp'
+#)) %>%
+#  st_drop_geometry()
+# get ACS data
+#shape_acs_2023 <- st_read(here::here(
+ # "analyses",
+#  "rtw",
+#  'input',
+#  'acs_2023.shp'
+#))
+
+## run below if want to update ACS
+# geography <- 'block group' #'tract' 'county'
+# state <- 'WA' #'53'
+# county <- '033'
+# survey = 'acs5' #acs5/profil
+# year <- 2023
+
+# view variables
+#acs <- load_variables(year = year, dataset = survey, cache = TRUE)
+
+# get variables
+# census_variables <- c(pop = 'B01001_001')
+
+# get census data
+# acs_2023 <- get_acs(geography = geography,
+#                     variables = census_variables,
+#                     year = year,
+#                     state = state,
+#                     county = county,
+#                     geometry = TRUE,
+#                     cb = TRUE) %>%
+#   #st_transform(2926) %>%
+#   st_transform(4326) %>%
+#   mutate(pop23 = estimate) %>%
+#   select(GEOID, NAME, pop23)
+
+# st_write(acs_2023, "C:/Users/kaito/OneDrive - King County/Documents/shapefiles/acs_2023.shp")
+
+#centroids <- shape_acs_2023 %>%
+#  st_centroid()
+
+#join1 <- st_join(shape_seattle_neighborhood, centroids) %>%
+#  st_drop_geometry()
+
+## get block group geography WITH population, epa, and seattle neighborhood
+#shape_bg_neighborhoods <- shape_acs_2023 %>%
+ # left_join(join1, by = join_by(GEOID)) %>%
+  #inner_join(shape_epas, by = join_by(GEOID == geoid)) %>%
+  #select(
+  #  GEOID,
+#    'NAME' = NAME.x,
+#    neighborhood,
+#    'pop23' = pop23.x,
+#    'epa' = fnl_scr
+#  ) #%>%
+# filter(neighborhood %in% select_neighborhood)
+
+#rm(join1, centroids)
+#rm(shape_seattle_neighborhood, shape_epas)
+
+
+### get stop list in subset neighborhood -------------------------------------------
+
+## run rmd code to get block groups
+
+get_study_area_stops <- function() {
+  data <- st_join(shape_neighborhoods, shape_stops)
+
+  subset_stop_list <- unlist(list(unique(data$stop_id)))
+}
+
+
+### get route list in subset neighborhood -------------------------------------------
+get_routes_by_neighborhood <- function(
+  select_neighborhood,
+  latest_service_change = 'yes'
+) {
+  data <- stop_ridership %>%
+    filter(neighborhood %in% select_neighborhood)
+
+  if (latest_service_change == 'yes') {
+    data <- stop_ridership_latest %>%
+      filter(neighborhood %in% select_neighborhood)
+  }
+
+  subset_list <- unlist(list(unique(data$route)))
+}
+
+# a <- get_routes_by_neighborhood(select_neighborhood = c('Central Business District'))
+# b <- get_routes_by_neighborhood(select_neighborhood = c('South Lake Union', 'Denny Triangle'))
+# b <- get_routes_by_neighborhood(select_neighborhood = c('Denny Triangle'))
+
+get_stops_by_neighborhood <- function(
+  select_neighborhood,
+  latest_service_change = 'yes'
+) {
+  data <- stop_ridership %>%
+    filter(neighborhood %in% select_neighborhood)
+
+  if (latest_service_change == 'yes') {
+    data <- stop_ridership_latest %>%
+      filter(neighborhood %in% select_neighborhood)
+  }
+
+  subset_list <- unlist(list(unique(data$stop_id)))
+}
+
+# b <- get_stops_by_neighborhood(select_neighborhood = c('South Lake Union', 'Denny Triangle'), latest_service_change = 'yes')
+
+### map neighborhood boundary map -------------------------------------------
+
+neighborhood_boundary_map <- function(zoom = 'all') {
+  if (zoom == 'all') {
+    data <- shape_neighborhoods %>%
+      mutate(colors = neighborhood)
+  }
+  if (zoom != 'all') {
+    data <- shape_neighborhoods %>%
+      mutate(colors = neighborhood) %>%
+      filter(neighborhood == zoom)
+  }
+
+  pal <- colorFactor("Spectral", data$colors, n = 5)
+
+  map <- leaflet(data) %>%
+    addProviderTiles(provider = "CartoDB.Positron") %>%
+    addPolygons(
+      fillColor = ~ pal(colors),
+      ## for lines to show the stroke ramp colors
+      color = ~ pal(colors),
+      stroke = FALSE,
+      fillOpacity = 0.7,
+      popup = paste(data$neighborhood, "<br>", "Pop:", data$pop23, "<br>")
+    )
+  map
+}
