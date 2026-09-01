@@ -26,57 +26,6 @@ service_period_colors <- c(
   "Spring 2026"   = "#4B146A"
 )
 
-# PRODUCTIVITY ---------------------------------------------------------------
-
-# Rides per Hour Productivity M and M plots - Weekday
-# ERROR message on dplyr::mutate() and cannot get ggplot2 to appear
-plot_productivity_distribution(
-  service_change = 261,
-  tbird_connection = con,
-  svc_family = NULL,
-  sched_day_type_coded_num = 0,
-  period_type = "day_part_cd",
-  period = "DAY",
-  route <- c( 203, 221, 222, 223, 225, 226, 240, 
-             241, 245, 246, 249, 250, 256, 257, 
-             269, 271, 311),
-  route_gain = NULL,
-  route_maintain = NULL,
-  route_lose = NULL,
-  activity_type = "rides_per_platform_hour",
-  binwidth = 1,
-  point_size = 20,
-  label_size = 4,
-  style_size = 'large'
-)
-ggplot2::ggsave("ELC Rides per Platform Hour 261.png", width = 6.5, height = 4, units = "in")
-
-# creates a table of productivity metrics for all routes or selected routes for a service change
-# WORKS for 253
-# ERROR message for service_change = 261
-route_productivity_table <- get_route_productivity(
-  service_change = 253,
-  tbird_connection = con,
-  period_type = "service_guidelines",
-  sched_day_type_coded_num = c(0,1,2),
-  filter_routes = TRUE,
-  route <- c(203, 221, 222, 223, 225, 226, 240, 
-             241, 245, 246, 249, 250, 256, 257, 
-             269, 271, 311)
-)
-write_csv(route_productivity_table, "rte_productivity_253.csv")
-
-# creates table of productivity thresholds by service family for all routes for a service change 
-# does not provide route-level productivity data
-# WORKS for 253
-# ERROR for 261
-productivity_thresholds_table <- get_productivity_thresholds(
-  service_change = 253,
-  tbird_connection = con,
-  period_type = "service_guidelines",
-  sched_day_type_coded_num = 0
-)
-write_csv(productivity_thresholds_table, "productivity_thresholds_table_253.csv")
 
 
 # STOP RIDERSHIP ------------------------------------------------------------
@@ -107,13 +56,41 @@ ELC_plot_stop_crosstab <- plot_stop_crosstab(
 )
 ggplot2::ggsave("ELC stop ridership plot_84264_253.png", width = 6.5, height = 4, units = "in")
 
+
+# Get ridership for a segment of a route defined by two stops (start and end)
+# WORKS
+# can include multiple routes
+# need to get stop ridership for routes first
+stop_ridership_table_230_231 <- get_stop_ridership(
+  service_change_num <- c(253, 261),
+  route <- c( 230, 231),
+  stop_id = "All",
+  tbird_connection = con
+)
+# then run plot function
+# would be cool if you could produce two plots split by direction using split_by
+segment_ridership_230_231 <- plot_segment_ridership(
+  dataframe = ELC_stop_ridership_table,
+  service_change_num <- c(253, 261),
+  route <- c(230, 231),
+  time_period = c("AM", "PM", "MID", "XEV", "XNT"),
+  direction = c("I", "O"),
+  x_axis = "period",
+  activity_type = "ons",
+  start_stop = 74580,
+  end_stop = 70220
+)
+ggplot2::ggsave("Segment Ridership_Rte 230-231.png", width = 6.5, height = 4, units = "in")
+
+
 # To see a map of LOCUS areas in the Viewer window
 # WORKS
 show_areas()
 
 # Get Stop Ridership for a LOCUS district/area - All stops in area  
-# WORKS for LOCUS areas, yay! issue with legend
+# WORKS for LOCUS areas -- PROBLEM with legend
 # ERROR for data_source = "King County Council Districts" and area = "6" or 6
+# is there code for exporting this map as a .png?
 get_stop_ridership_by_area(
   area = "Ballard",
   gtfs_date = '2025-09-30',
@@ -138,31 +115,6 @@ get_stops_by_area(
   return_type = "table",
   data_source = "LOCUS"
 )
-
-# Get ridership for a segment of a route defined by two stops (start and end)
-# WORKS
-# can include multiple routes
-# need to get stop ridership for routes first
-stop_ridership_table_230_231 <- get_stop_ridership(
-  service_change_num = 261,
-  route <- c( 230, 231),
-  stop_id = "All",
-  tbird_connection = con
-)
-# then run plot function
-# would be cool if you could produce two plots split by direction using split_by
-segment_ridership_230_231 <- plot_segment_ridership(
-  dataframe = ELC_stop_ridership_table,
-  service_change_num = 261,
-  route <- c(230, 231),
-  time_period = c("AM", "PM", "MID", "XEV", "XNT"),
-  direction = c("I", "O"),
-  x_axis = "period",
-  activity_type = "ons",
-  start_stop = 74580,
-  end_stop = 70220
-)
-ggplot2::ggsave("Segment Ridership_Rte 230-231.png", width = 6.5, height = 4, units = "in")
 
 
 # Get Stop Frequency - I don't know if this is complete or what the gtfs_obj would be?
@@ -230,6 +182,59 @@ plot_route_ridership <- plot_route_by_service_change(
   activity_type = "ons"
 )
 ggplot2::ggsave("ELC route ridership_AM_PM.png", width = 6.5, height = 4, units = "in")
+
+
+# PRODUCTIVITY ---------------------------------------------------------------
+
+# Rides per Hour Productivity M and M plots - Weekday
+# ERROR message on dplyr::mutate() and cannot get ggplot2 to appear
+plot_productivity_distribution(
+  service_change = 261,
+  tbird_connection = con,
+  svc_family = NULL,
+  sched_day_type_coded_num = 0,
+  period_type = "day_part_cd",
+  period = "DAY",
+  route <- c( 203, 221, 222, 223, 225, 226, 240, 
+              241, 245, 246, 249, 250, 256, 257, 
+              269, 271, 311),
+  route_gain = NULL,
+  route_maintain = NULL,
+  route_lose = NULL,
+  activity_type = "rides_per_platform_hour",
+  binwidth = 1,
+  point_size = 20,
+  label_size = 4,
+  style_size = 'large'
+)
+ggplot2::ggsave("ELC Rides per Platform Hour 261.png", width = 6.5, height = 4, units = "in")
+
+# creates a table of productivity metrics for all routes or selected routes for a service change
+# WORKS for 253
+# ERROR message for service_change = 261
+route_productivity_table <- get_route_productivity(
+  service_change = 253,
+  tbird_connection = con,
+  period_type = "service_guidelines",
+  sched_day_type_coded_num = c(0,1,2),
+  filter_routes = TRUE,
+  route <- c(203, 221, 222, 223, 225, 226, 240, 
+             241, 245, 246, 249, 250, 256, 257, 
+             269, 271, 311)
+)
+write_csv(route_productivity_table, "rte_productivity_253.csv")
+
+# creates table of productivity thresholds by service family for all routes for a service change 
+# does not provide route-level productivity data
+# WORKS for 253
+# ERROR for 261
+productivity_thresholds_table <- get_productivity_thresholds(
+  service_change = 253,
+  tbird_connection = con,
+  period_type = "service_guidelines",
+  sched_day_type_coded_num = 0
+)
+write_csv(productivity_thresholds_table, "productivity_thresholds_table_253.csv")
 
 
 #EQUITY DATA ------------------------------------------------------------------
