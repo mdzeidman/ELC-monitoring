@@ -1,6 +1,7 @@
 options(scipen = 999)
 # Run manually only when ServicePlanningFunctions needs updating:
 devtools::install_github("KC-Metro-Transit/ServicePlanningFunctions")
+
 library(ServicePlanningFunctions)
 library(DBI)
 library(tidyverse)
@@ -28,7 +29,7 @@ service_period_colors <- c(
 # PRODUCTIVITY ---------------------------------------------------------------
 
 # Rides per Hour Productivity M and M plots - Weekday
-# getting an error message on dplyr::mutate() and cannot get ggplot2 to appear
+# ERROR message on dplyr::mutate() and cannot get ggplot2 to appear
 plot_productivity_distribution(
   service_change = 261,
   tbird_connection = con,
@@ -39,7 +40,6 @@ plot_productivity_distribution(
   route <- c( 203, 221, 222, 223, 225, 226, 240, 
              241, 245, 246, 249, 250, 256, 257, 
              269, 271, 311),
-  # MZ: how to have it color only ELC routes? the list of routes is ELC fixed routes
   route_gain = NULL,
   route_maintain = NULL,
   route_lose = NULL,
@@ -52,8 +52,8 @@ plot_productivity_distribution(
 ggplot2::ggsave("ELC Rides per Platform Hour 261.png", width = 6.5, height = 4, units = "in")
 
 # creates a table of productivity metrics for all routes or selected routes for a service change
-# works for 253
-# getting an error message for service_change = 261
+# WORKS for 253
+# ERROR message for service_change = 261
 route_productivity_table <- get_route_productivity(
   service_change = 253,
   tbird_connection = con,
@@ -68,7 +68,8 @@ write_csv(route_productivity_table, "rte_productivity_253.csv")
 
 # creates table of productivity thresholds by service family for all routes for a service change 
 # does not provide route-level productivity data
-# does not work for 261
+# WORKS for 253
+# ERROR for 261
 productivity_thresholds_table <- get_productivity_thresholds(
   service_change = 253,
   tbird_connection = con,
@@ -78,12 +79,10 @@ productivity_thresholds_table <- get_productivity_thresholds(
 write_csv(productivity_thresholds_table, "productivity_thresholds_table_253.csv")
 
 
-# 
-
 # STOP RIDERSHIP ------------------------------------------------------------
 
 # Get Stop Ridership for a Route - All Stops - And write to a csv file
-# works
+# WORKS
 ELC_stop_ridership_table <- get_stop_ridership(
   service_change_num <- c(253, 261),
   route <- c( 203, 221, 222, 223, 225, 226, 240, 
@@ -94,7 +93,8 @@ ELC_stop_ridership_table <- get_stop_ridership(
 )
 write_csv(ELC_stop_ridership_table, "ELC ridership.csv")
 
-#plot of stop-level ridership for one or more stops for one or more routes by period for one or more service change
+# plot of stop-level ridership for one or more stops for one or more routes by period for one or more service change
+# WORKS
 ELC_plot_stop_crosstab <- plot_stop_crosstab(
   dataframe = ELC_stop_ridership_table,
   #dataframe must be for a get_stop_ridership result you've already run for service_change_num, routes, and stop_id used here
@@ -108,12 +108,12 @@ ELC_plot_stop_crosstab <- plot_stop_crosstab(
 ggplot2::ggsave("ELC stop ridership plot_84264_253.png", width = 6.5, height = 4, units = "in")
 
 # To see a map of LOCUS areas in the Viewer window
-# works
+# WORKS
 show_areas()
 
 # Get Stop Ridership for a LOCUS district/area - All stops in area  
-# works for LOCUS areas, yay! issue with legend
-# doesn't seem to work with "King County Council Districts" if I change area to "6" or 6
+# WORKS for LOCUS areas, yay! issue with legend
+# ERROR for data_source = "King County Council Districts" and area = "6" or 6
 get_stop_ridership_by_area(
   area = "Ballard",
   gtfs_date = '2025-09-30',
@@ -128,8 +128,9 @@ get_stop_ridership_by_area(
 )
 
 # Get stops by area - list of all stops in a LOCUS area or King County Council District
-# Getting error when trying to run with King County Council District
-# works for LOCUS as data_source and area
+# WORKS for LOCUS as data_source and area
+# ERROR when trying to run with King County Council District
+
 get_stops_by_area(
   area = "Ballard",
   gtfs_date = '2025-09-30',
@@ -139,11 +140,34 @@ get_stops_by_area(
 )
 
 # Get ridership for a segment of a route defined by two stops (start and end)
+# WORKS
 # can include multiple routes
+# need to get stop ridership for routes first
+stop_ridership_table_230_231 <- get_stop_ridership(
+  service_change_num = 261,
+  route <- c( 230, 231),
+  stop_id = "All",
+  tbird_connection = con
+)
+# then run plot function
+# would be cool if you could produce two plots split by direction using split_by
+segment_ridership_230_231 <- plot_segment_ridership(
+  dataframe = ELC_stop_ridership_table,
+  service_change_num = 261,
+  route <- c(230, 231),
+  time_period = c("AM", "PM", "MID", "XEV", "XNT"),
+  direction = c("I", "O"),
+  x_axis = "period",
+  activity_type = "ons",
+  start_stop = 74580,
+  end_stop = 70220
+)
+ggplot2::ggsave("Segment Ridership_Rte 230-231.png", width = 6.5, height = 4, units = "in")
 
 
 # Get Stop Frequency - I don't know if this is complete or what the gtfs_obj would be?
-# runs but I don't understand resulting table - what units is mean_headway in (seconds?) - csv works too
+# WORKS but I don't understand resulting table - what units is mean_headway in (seconds?) - csv works too
+# unsure how to get right GTFS file - using test data?
 stop_freq_table <- get_stop_frequency(
   # what is gtfs_duke?
   gtfs_obj = gtfs_duke,
@@ -159,7 +183,7 @@ write_csv(stop_freq_table, "stop_freq_AM.csv")
 # creates table of trip-level ridership (ons, offs, departure load) by period and direction
 # can filter by route and day type or view all
 # would be nice to pick period or have it aggregate to All
-# works
+# WORKS
 elc_trip_ridership_table <- get_trip_ridership(
   service_change_num <- c(243, 251, 253, 261),
   route <- c(203, 221, 222, 223, 225, 226, 240, 
@@ -171,7 +195,7 @@ elc_trip_ridership_table <- get_trip_ridership(
 write_csv(elc_trip_ridership_table, "trip_ridership_ELCfixedroutes_261.csv")
 
 # creates plot of trip ridership
-# works
+# WORKS
 # can create separate plots by day type and route (use in split_by)
 # can use multiple service_change_num
 ELC_trip_ridership <- plot_trip_crosstab(
@@ -192,7 +216,7 @@ ggplot2::ggsave("ELC trip ridership_243-261_route.png", width = 6.5, height = 4,
 
 
 # creates a plot of route-level ridership for top 15 routes, if list all times then gives for all day
-# works
+# WORKS
 # is there a way to customize title, number of routes shown, or color of bars?
 plot_route_ridership <- plot_route_by_service_change(
   dataframe = trip_ridership_table,
@@ -212,6 +236,7 @@ ggplot2::ggsave("ELC route ridership_AM_PM.png", width = 6.5, height = 4, units 
 
 # creates table of opportunity index scores by route and lists service family, along with some other data
 # does this include equity priority score as well? (what is mean_stop_opportunity_score?)
+# WORKS
 ELC_equity_scores <- get_route_equity_scores(
   tbird_connection = con,
   route <- c(203, 221, 222, 223, 225, 226, 240, 
@@ -225,7 +250,7 @@ write_csv(ELC_equity_scores, "equity_scores_ELCfixedroutes_261.csv")
 
 # create summary table of trips and headways by day type for list of routes or all routes
 # not sure how to get GTFS for baseline or comparison/proposed
-# cannot test
+# CANNOT TEST
 ELC_trips_table <- create_trips_table(
   gtfs = #not sure what goes here,
   netplan_gtfs = TRUE,
@@ -238,5 +263,3 @@ ELC_trips_table <- create_trips_table(
               241, 245, 246, 249, 250, 256, 257, 
               269, 271, 311)
 )
-
-
