@@ -90,18 +90,19 @@ get_stops_by_area(
 )
 
 # Get Stop Frequency - I don't know if this is complete or what the gtfs_obj would be?
-# cannot run
-get_stop_frequency(
-  # what would the gtfs_obj be?
-  gtfs_obj = "gtfs_feed"
+# runs but I don't understand resulting table - what units is mean_headway in (seconds?) - csv works too
+stop_freq_table <- get_stop_frequency(
+  # what is gtfs_duke?
+  gtfs_obj = gtfs_duke,
   start_time = "05:00:00",
   end_time = "08:59:59",
   by_route = FALSE
 )
+write_csv(stop_freq_table, "stop_freq_AM.csv")
 
 # creates a table of productivity metrics for all routes or selected routes for a service change
 # getting an error message
-get_route_productivity(
+route_productivity_table <- get_route_productivity(
   service_change = 261,
   tbird_connection = con,
   period_type = "service_guidelines",
@@ -111,3 +112,5 @@ get_route_productivity(
              241, 245, 246, 249, 250, 256, 257, 
              269, 271, 311)
 )
+
+write_csv(rte_productivity_table, "rte_productivity_261.csv")
