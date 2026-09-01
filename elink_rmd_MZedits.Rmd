@@ -13,8 +13,11 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
 # github location
 #source(here::here('kcm_style.R'))
 #MZ attempted to fix source of R code 
@@ -59,7 +62,7 @@ kbl(
     select_service_change = c(251, 253),
     var1 = c('rider')
   ) %>%
-    # MZ commented out to get all days of week: filter(Day == 'Weekday') %>%
+    filter(Day == 'Weekday') %>%
     #janitor::adorn_totals() %>%
     #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
     mutate(
@@ -204,7 +207,7 @@ kbl(
 
 ## Trip Ridership
 
-Overall by day
+Overall Boardings by Day
 
 ```{r}
 
@@ -250,6 +253,31 @@ Overall by day
 # ) %>%
 #   kable_styling(bootstrap_options = c("striped", "hover"))
 
+#MZ attempted to add an overall table separated by days of week for Fall 2025 v Spring 2025
+kbl(
+  summ_table(
+    source = 'trip_ridership',
+    group_var = c('Day'),
+    select_service_change = c(253, 251),
+    var1 = c('ons')
+  ) %>%
+    #MZ commented out filter
+#     #filter(Day == 'Weekday') %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+#MZ changed percent change calc to Fall 2025 v Spring 2025
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+  #MZ updated accuracy to 1 decimal place
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 0.1)) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
 ```
 
 Weekdays
@@ -276,6 +304,29 @@ Weekdays
 #     select(-Variable, -Day)
 # ) %>%
 #   kable_styling(bootstrap_options = c("striped", "hover"))
+
+#MZ copied and updated to Fall 2025 v Spring 2025 with 1 decimal accuracy for percent change
+weekdays
+kbl(
+  summ_table(
+    source = 'trip_ridership',
+    group_var = c('Day', 'route'),
+    select_service_change = c(253, 251),
+    var1 = c('ons')
+  ) %>%
+    filter(Day == 'Weekday') %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 0.1)) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable, -Day)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
 
 # ridership_route_service_change_plt(
 #   day_of_week = 'Weekday',
@@ -347,4 +398,63 @@ Sunday
 # ) %>%
 #   kable_styling(bootstrap_options = c("striped", "hover"))
 
+```
+
+
+Weekends: Fall 2025 v Spring 2025
+
+```{r}
+#MZ new section of code to create table for weekend trip ridership by route
+kbl(
+  summ_table(
+    source = 'trip_ridership',
+    group_var = c('Day', 'route'),
+#MZ updated service change to Fall 2025 (253)
+    select_service_change = c(253, 251),
+    var1 = c('ons')
+  ) %>%
+  #MZ added filter to include Sunday data
+    filter(Day == 'Saturday' | Day == 'Sunday') %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+#MZ updated change to be Fall 2025 - Spring 2025
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+  #MZ updated accuract to 1 decimal place
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 0.1)) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable, -Day)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+Rides per Platform Hour
+
+```{r}
+#MZ attempted to add new section of code to create a table with rides/platform hour data using variable created in elink.r and trip ridership table code above
+kbl(
+  summ_table(
+    source = 'trip_ridership',
+    group_var = c('Day', 'route'),
+#MZ updated service change to Fall 2025 (253)
+    select_service_change = c(253, 251),
+    var1 = c('rides_per_hour')
+  ) %>%
+    #mutate(Change = .[ncol(.)] - .[ncol(.) -1]) %>%
+    mutate(
+#MZ updated change to be Fall 2025 - Spring 2025
+      Change = get('Fall 2025') - get('Spring 2025'),
+      Percent_Change = Change / get('Spring 2025')
+    ) %>%
+    arrange(desc(Percent_Change)) %>%
+  #MZ updated accuracy to 1 decimal place
+    mutate(Percent_Change = scales::percent(Percent_Change, accuracy = 0.1)) %>%
+    janitor::adorn_totals() %>%
+    mutate_if(is.numeric, scales::label_comma()) %>%
+    select(-Variable, -Day)
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
 ```

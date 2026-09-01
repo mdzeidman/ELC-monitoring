@@ -225,14 +225,14 @@ count_stop_253 <- length(stop_253)
 # write_csv(table_stop_ridership, "stop_ridership_2025.12.15.csv")
 
 ## write csv - MZ attempted to created new csv for ridership by time period
-write_csv(stop_ridership, "stop_ridership_time_period_2025.12.30.csv")
+#write_csv(stop_ridership, "stop_ridership_time_period_2025.12.30.csv")
  table_stop_ridership <- summ_table(
    source = 'stop_ridership',
    group_var = c('stop_id', 'host_street_nm', 'cross_street_nm', 'route', 'Day', 'time_period_at_stop'),
    select_service_change = service_changes,
    var1 = c('rider', 'ons', 'offs')
  )
-# write_csv(table_stop_ridership, "stop_ridership_2025.12.15.csv")
+ write_csv(table_stop_ridership, "stop_ridership_time_period_2025.12.15.csv")
 
 ## create route neighborhood xwalk
 # xwalk_route_neighborhood <- st_join(shape_neighborhoods, shape_stops) %>%
